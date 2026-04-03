@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Brain, LayoutDashboard, Target, Calendar, UserCheck, FileText, LogOut, MessageCircle, BookOpen } from 'lucide-react';
+import { Brain, LayoutDashboard, Target, Calendar, UserCheck, FileText, LogOut, BookOpen, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const Layout = ({ role, setRole }) => {
@@ -15,8 +15,7 @@ const Layout = ({ role, setRole }) => {
   const studentNavItems = [
     { name: 'Dashboard', path: '/student-dashboard', icon: <LayoutDashboard size={18} /> },
     { name: 'AI PDF Learning', path: '/pdf-learning', icon: <FileText size={18} /> },
-    { name: 'AI Tutor Chat', path: '/tutor', icon: <MessageCircle size={18} /> },
-    { name: 'Quiz Generator', path: '/quiz-generator', icon: <BookOpen size={18} /> },
+    { name: 'Smart Quiz & Web Scraping', path: '/quiz-generator', icon: <Layers size={18} /> },
     { name: 'Performance', path: '/performance', icon: <Target size={18} /> },
     { name: 'Study Planner', path: '/planner', icon: <Calendar size={18} /> },
   ];

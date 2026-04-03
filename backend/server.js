@@ -47,23 +47,96 @@ async function callGrok(prompt) {
   return response.choices[0].message.content;
 }
 
-// Local fallback — deterministic, always works
+// Local fallback — deterministic, always works -> now dynamic with open source alternatives in mind
 function localFallback(type, context) {
   if (type === 'summary') {
     const text = context || '';
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 15).slice(0, 8);
-    if (sentences.length === 0) return 'This document covers educational content. Please review the key sections for detailed understanding.';
-    return 'KEY POINTS FROM THE DOCUMENT:\n\n' + sentences.map((s, i) => `${i + 1}. ${s.trim()}.`).join('\n');
+    const cleaned = text.replace(/[\r\n]+/g, ' ');
+    const sentences = cleaned.split(/[^.!?]+[.!?]+/g) || [];
+    // Or simpler matcher for sentences:
+    const regex = /[^\.!\?]+[\.!\?]+/g;
+    const matched = cleaned.match(regex) || [cleaned];
+    const valid = matched.filter(s => s.trim().length > 30);
+    
+    if (valid.length === 0) {
+      return 'DOCUMENT SUMMARY:\n\n' + cleaned.substring(0, 800) + '...';
+    }
+    
+    return 'KEY HIGHLIGHTS FROM DOCUMENT:\n\n' + valid.slice(0, 8).map((s, i) => `${i+1}. ${s.trim()}`).join('\n');
   }
   if (type === 'quiz') {
+    let mappedQuestions = [];
+    const isDoc = context && context.length > 300;
+    
+    if (isDoc) {
+      // Build realistic questions by reading the PDF (context)
+      const cleaned = context.replace(/[\r\n]+/g, ' ');
+      const sentences = (cleaned.match(/[^\.!\?]+[\.!\?]+/g) || [cleaned])
+        .filter(s => s.trim().length > 40 && s.trim().length < 150);
+      
+      const shuffledSentences = sentences.sort(() => 0.5 - Math.random()).slice(0, 5);
+      
+      if (shuffledSentences.length < 3) {
+        // Fallback to generic if we couldn't parse enough document text
+        const fallbackOpts = ['True', 'False', 'Not Mentioned', 'All of the above'];
+        mappedQuestions = [
+          { question: `Does the document cover core principles thoroughly?`, options: fallbackOpts, answer: 'True' },
+          { question: `What is the best way to master this material?`, options: ['Active review', 'Skipping chapters', 'None of the above', 'Guessing'], answer: 'Active review' },
+          { question: `The primary focus of this text is advanced concepts.`, options: fallbackOpts, answer: 'False' },
+          { question: `Which tool is primarily discussed?`, options: ['Analytical thinking', 'Mechanical tools', 'None', 'TBD'], answer: 'Analytical thinking' },
+          { question: `Is practice emphasized in learning this?`, options: fallbackOpts, answer: 'True' }
+        ];
+      } else {
+        mappedQuestions = shuffledSentences.map(sentence => {
+          const words = sentence.trim().split(' ').filter(w => w.length > 4);
+          if (words.length === 0) {
+              return { question: 'Is this concept detailed in the text?', options: ['Yes', 'No', 'Maybe', 'N/A'], answer: 'Yes' };
+          }
+          const targetWord = words[Math.floor(Math.random() * words.length)];
+          const blanked = sentence.replace(targetWord, '______');
+          return {
+            question: `Fill in the blank from the text: "${blanked}"`,
+            options: [
+              targetWord, 
+              targetWord.split('').reverse().join(''), 
+              'Irrelevant', 
+              'None of the above'
+            ].sort(() => 0.5 - Math.random()),
+            answer: targetWord
+          };
+        });
+        
+        while (mappedQuestions.length < 5) {
+          mappedQuestions.push({ question: 'Does the document emphasize core fundamentals?', options: ['Yes', 'No', 'Uncertain', 'Maybe'], answer: 'Yes' });
+        }
+      }
+    } else {
+      // Short topic input -> generic quiz
+      const questionsBank = [
+        { q: `What is the fundamental concept behind this topic?`, a: 'Core principles and theory', opts: ['Core principles and theory', 'Random guessing', 'Unrelated field', 'None of the above'] },
+        { q: `Why is this topic important to study?`, a: 'It builds critical thinking skills', opts: ['It has no relevance', 'It builds critical thinking skills', 'It is purely theoretical', 'Only experts need to know it'] },
+        { q: `What is the best approach to learning new concepts?`, a: 'Active recall and spaced repetition', opts: ['Skip practice', 'Active recall and spaced repetition', 'Only read once', 'Ignore difficult parts'] },
+        { q: `How can you apply this knowledge practically?`, a: 'By solving real-world problems', opts: ['By ignoring it entirely', 'By solving real-world problems', 'It has no practical use', 'Only in theoretical debates'] },
+        { q: `Which study tool is most effective for this?`, a: 'Practice questions and flashcards', opts: ['Watching TV', 'Practice questions and flashcards', 'Staring at the book', 'Sleeping'] },
+        { q: `What is the main objective of studying this material?`, a: 'To deeply understand the core subject', opts: ['To pass time', 'To deeply understand the core subject', 'To forget it later', 'None of the above'] },
+        { q: `When should you review this topic?`, a: 'Consistently over time', opts: ['Consistently over time', 'Only the night before the exam', 'Never', 'Once every five years'] },
+        { q: `What makes this subject unique?`, a: 'Its specific methodology and principles', opts: ['Nothing', 'Its specific methodology and principles', 'It is confusing', 'It requires no effort'] }
+      ];
+      const shuffled = questionsBank.sort(() => 0.5 - Math.random()).slice(0, 5);
+      const topicName = (context && context.length < 50) ? context : "this topic";
+      mappedQuestions = shuffled.map(x => ({
+        question: x.q.replace(/this topic/gi, topicName),
+        options: x.opts,
+        answer: x.a
+      }));
+    }
+
     return JSON.stringify({
-      summary: context ? context.substring(0, 500) + '...' : 'Document content summary.',
-      quiz: [
-        { question: 'What is the main topic discussed in this document?', options: ['The primary subject matter', 'An unrelated topic', 'A fictional narrative', 'None of the above'], answer: 'The primary subject matter' },
-        { question: 'Which learning approach is most effective?', options: ['Passive reading only', 'Active recall and practice', 'Memorization without understanding', 'Skipping difficult sections'], answer: 'Active recall and practice' },
-        { question: 'What should you do after reading study material?', options: ['Forget about it', 'Take a quiz to test understanding', 'Never review again', 'Skip to the next topic'], answer: 'Take a quiz to test understanding' }
-      ],
-      youtube_topics: ['Study techniques for students', 'How to learn effectively', 'Educational strategies']
+      title: `Quiz: ${topicName}`,
+      summary: localFallback('summary', context),
+      quiz: mappedQuestions,
+      questions: mappedQuestions,
+      youtube_topics: [`${topicName} for beginners`, `Learn ${topicName}`, `${topicName} explained`, `${topicName} core concepts`]
     });
   }
   if (type === 'tutor') {
@@ -212,7 +285,7 @@ Provide a clear, structured, and helpful response. Use bullet points and example
   }
 });
 
-// Generate Quiz from Topic (no PDF needed)
+// Generate Quiz from Topic & Scrape Web (no PDF needed)
 app.post('/api/generate-quiz', async (req, res) => {
   const { topic, difficulty = 'medium' } = req.body;
   if (!topic) {
@@ -220,34 +293,71 @@ app.post('/api/generate-quiz', async (req, res) => {
   }
 
   try {
-    const prompt = `Generate a ${difficulty} difficulty quiz about "${topic}". Return ONLY a raw JSON object (no markdown, no code blocks) with this exact structure:
-{
-  "title": "Quiz title",
-  "questions": [
-    {"question": "Question text?", "options": ["A", "B", "C", "D"], "answer": "The correct option exactly as written in options"}
-  ]
-}
-Generate exactly 5 questions. Make them educational and varied in difficulty.`;
+    const axios = require('axios');
+    const SERP_API_KEY = process.env.SERP_API_KEY || 'b4936c3977ddece4064f6f2e6e5855e9efa57d6655ad228eebe6dcf0404170a7';
+    
+    const qsUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(topic + " tutorial questions")}&api_key=${SERP_API_KEY}`;
+    const qsPromise = axios.get(qsUrl).catch(() => null);
 
-    const aiResult = await callAI(prompt, 'quiz', topic);
-    const parsed = extractJSON(aiResult);
+    const pdfUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(topic + " filetype:pdf")}&api_key=${SERP_API_KEY}`;
+    const pdfPromise = axios.get(pdfUrl).catch(() => null);
 
-    if (parsed && parsed.questions) {
-      return res.json(parsed);
+    const ytUrl = `https://serpapi.com/search.json?engine=youtube&search_query=${encodeURIComponent(topic + " tutorial")}&api_key=${SERP_API_KEY}`;
+    const ytPromise = axios.get(ytUrl).catch(() => null);
+
+    const [qsRes, pdfRes, ytRes] = await Promise.all([qsPromise, pdfPromise, ytPromise]);
+
+    const pdfs = pdfRes?.data?.organic_results?.filter(r => r.link.endsWith('.pdf')).slice(0, 6).map(r => ({
+      title: r.title,
+      link: r.link,
+      snippet: r.snippet
+    })) || [];
+
+    const importantQA = qsRes?.data?.related_questions?.slice(0, 6).map(q => ({
+      question: q.question,
+      snippet: q.snippet
+    })) || [];
+
+    const relatedTopics = qsRes?.data?.related_searches?.slice(0, 6).map(r => r.query) || 
+                          [ `${topic} basics`, `${topic} advanced examples`, `Learn ${topic}` ];
+
+    const videos = ytRes?.data?.video_results?.slice(0, 6).map(v => ({
+      title: v.title,
+      link: v.link,
+      thumbnail: v.thumbnail?.static || v.thumbnail?.url
+    })) || [];
+
+    const fallbackQuiz = JSON.parse(localFallback('quiz', topic));
+    
+    // If we have scraped questions (PAA), convert them into the main quiz format
+    let finalQuestions = fallbackQuiz.quiz || fallbackQuiz.questions;
+    
+    if (importantQA.length > 0) {
+      finalQuestions = importantQA.map(qa => ({
+        question: qa.question,
+        options: [
+          qa.snippet ? (qa.snippet.substring(0, 100) + '...') : 'Check related resources',
+          'Incorrect information',
+          'Not applicable to this topic',
+          'None of the above'
+        ].sort(() => 0.5 - Math.random()),
+        answer: qa.snippet ? (qa.snippet.substring(0, 100) + '...') : 'Check related resources'
+      })).slice(0, 5);
     }
 
-    // Fallback quiz
     res.json({
-      title: `Quiz: ${topic}`,
-      questions: [
-        { question: `What is the fundamental concept behind ${topic}?`, options: ['Core principles and theory', 'Random guessing', 'Unrelated field', 'None of the above'], answer: 'Core principles and theory' },
-        { question: `Why is ${topic} important to study?`, options: ['It has no relevance', 'It builds critical thinking skills', 'It is purely theoretical', 'Only experts need to know it'], answer: 'It builds critical thinking skills' },
-        { question: 'What is the best approach to learning new concepts?', options: ['Skip practice', 'Active recall and spaced repetition', 'Only read once', 'Ignore difficult parts'], answer: 'Active recall and spaced repetition' }
-      ]
+      title: `Web Scraped Quiz: ${topic}`,
+      questions: finalQuestions,
+      importantQA,
+      relatedTopics,
+      pdfs,
+      videos
     });
+
   } catch (err) {
     console.error('[Quiz Gen] Error:', err.message);
-    res.status(500).json({ error: 'Could not generate quiz' });
+    const fallback = JSON.parse(localFallback('quiz', topic));
+    res.json({ title: fallback.title, questions: fallback.quiz, importantQA: [], relatedTopics: [], pdfs: [], videos: [] });
   }
 });
 
@@ -303,6 +413,74 @@ app.post('/api/analyze-weakness', async (req, res) => {
   } catch (err) {
     console.error('[Analysis] Error:', err.message);
     res.json({ analysis: 'Based on your performance data, I recommend focusing on consistent daily practice and reviewing topics where your scores are below 70%. Consider using flashcards and practice problems to strengthen weak areas.' });
+  }
+});
+
+// Topic Search Endpoint Using SerpAPI
+app.post('/api/topic-search', async (req, res) => {
+  const { topic } = req.body;
+  if (!topic) {
+    return res.status(400).json({ error: 'Please provide a topic' });
+  }
+
+  try {
+    const axios = require('axios');
+    const SERP_API_KEY = process.env.SERP_API_KEY || 'b4936c3977ddece4064f6f2e6e5855e9efa57d6655ad228eebe6dcf0404170a7';
+    
+    // 1. YouTube Videos Search
+    const ytUrl = `https://serpapi.com/search.json?engine=youtube&search_query=${encodeURIComponent(topic + " tutorial")}&api_key=${SERP_API_KEY}`;
+    const ytPromise = axios.get(ytUrl).catch(() => null);
+    
+    // 2. Google Search for PDFs
+    const pdfUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(topic + " filetype:pdf")}&api_key=${SERP_API_KEY}`;
+    const pdfPromise = axios.get(pdfUrl).catch(() => null);
+    
+    // 3. Google Search for Important Questions
+    const qsUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(topic + " important questions exam")}&api_key=${SERP_API_KEY}`;
+    const qsPromise = axios.get(qsUrl).catch(() => null);
+
+    const [ytRes, pdfRes, qsRes] = await Promise.all([ytPromise, pdfPromise, qsPromise]);
+
+    const videos = ytRes?.data?.video_results?.slice(0, 6).map(v => ({
+      title: v.title,
+      link: v.link,
+      thumbnail: v.thumbnail?.static || v.thumbnail?.url
+    })) || [];
+
+    const pdfs = pdfRes?.data?.organic_results?.filter(r => r.link.endsWith('.pdf')).slice(0, 6).map(r => ({
+      title: r.title,
+      link: r.link,
+      snippet: r.snippet
+    })) || [];
+
+    // Fallback if no specific PDFs found, just grab some top results
+    if (pdfs.length === 0 && pdfRes?.data?.organic_results) {
+        pdfRes.data.organic_results.slice(0, 3).forEach(r => {
+            pdfs.push({ title: r.title, link: r.link, snippet: r.snippet });
+        });
+    }
+
+    let questions = [];
+    if (qsRes?.data?.related_questions) {
+      questions = qsRes.data.related_questions.slice(0, 6).map(q => q.question);
+    } else if (qsRes?.data?.organic_results) {
+      questions = qsRes.data.organic_results.slice(0, 6).map(r => r.title);
+    }
+
+    // Dynamic quiz integration for the topic
+    const fallbackQuiz = JSON.parse(localFallback('quiz', topic));
+
+    res.json({
+      topic,
+      videos,
+      pdfs,
+      questions,
+      quiz: fallbackQuiz.quiz || fallbackQuiz.questions,
+    });
+
+  } catch (err) {
+    console.error('[Topic Search] Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch topic data from SerpAPI' });
   }
 });
 

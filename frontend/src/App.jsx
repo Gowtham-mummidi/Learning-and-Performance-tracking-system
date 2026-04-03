@@ -7,7 +7,6 @@ import TeacherDashboard from './pages/TeacherDashboard';
 import StudyPlanner from './pages/StudyPlanner';
 import Login from './pages/Login';
 import StudentPdfLearning from './pages/StudentPdfLearning';
-import AiTutor from './pages/AiTutor';
 import QuizGenerator from './pages/QuizGenerator';
 import './index.css';
 
@@ -26,7 +25,6 @@ function App() {
                 <Route index element={<Navigate to="/student-dashboard" replace />} />
                 <Route path="student-dashboard" element={<Dashboard />} />
                 <Route path="pdf-learning" element={<StudentPdfLearning />} />
-                <Route path="tutor" element={<AiTutor />} />
                 <Route path="quiz-generator" element={<QuizGenerator />} />
                 <Route path="performance" element={<Performance />} />
                 <Route path="planner" element={<StudyPlanner />} />
