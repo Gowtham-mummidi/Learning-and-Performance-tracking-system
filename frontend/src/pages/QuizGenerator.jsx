@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Layers, CheckCircle, RefreshCw, Award, Sparkles, HelpCircle, FileText, Link as LinkIcon, PlayCircle } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
 const QuizGenerator = () => {
   const [topic, setTopic] = useState('');

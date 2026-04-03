@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, FileText, PlayCircle, Brain, CheckCircle, Loader2, X, RefreshCw, Award } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
 const StudentPdfLearning = () => {
   const [file, setFile] = useState(null);
